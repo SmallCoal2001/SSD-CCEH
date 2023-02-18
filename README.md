@@ -1,24 +1,31 @@
 # SSD-CCEH
+## Quick Start
+```
+mkdir build
+cd build
+cmake ..
+make
+```
 
-Performance 
+## Performance 
 ```
 ./SSD_CCEH --t=1
-Insert IOPS: 98879.03
-Read IOPS: 131683.35
+Insert IOPS: 149968.27
+Read IOPS: 203668.57
 
 ./SSD_CCEH --t=2
-Insert IOPS: 124578.34
-Read IOPS: 187952.11
+Insert IOPS: 159591.47
+Read IOPS: 286973.40
 
 ./SSD_CCEH --t=4
-Insert IOPS: 178514.42
-Read IOPS: 298817.14
+Insert IOPS: 209404.20
+Read IOPS: 354033.27
 
 ./SSD_CCEH --t=8
-Insert IOPS: 215883.91
-Read IOPS: 376382.82
+Insert IOPS: 229510.97
+Read IOPS: 375778.99
 
 ./SSD_CCEH --t=16
-Insert IOPS: 193826.35
-Read IOPS: 327722.54
+Insert IOPS: 175120.26
+Read IOPS: 282978.59
 ```
