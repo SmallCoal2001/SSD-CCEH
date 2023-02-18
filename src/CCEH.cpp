@@ -11,72 +11,39 @@
 
 #define f_seed 0xc70697UL
 #define s_seed 0xc70697UL
-//#define f_seed 0xc70f6907UL
-//#define s_seed 0xc70f6907UL
 
 using namespace std;
 
-fstream segFile;
-
-//bool dir_read(Directory *dir) {
-//    ifstream file;
-//    file.open("data/Dir", ios::binary | ios::in);
-//    if (!file) return false;
-//    file.read(reinterpret_cast<char *>(dir), sizeof(Directory));
-//    file.close();
-//    return true;
-//}
-//
-//void dir_write(Directory *dir) {
-//    ofstream file;
-//    file.open("data/Dir", ios::binary | ios::out);
-//    file.write(reinterpret_cast<const char *>(dir), sizeof(Directory));
-//    file.close();
-//}
-//
-//bool segment_read(size_t x, Segment *target) {
-//    ifstream file;
-//    string file_no = "data/" + to_string(x);
-//    file.open(file_no, ios::binary | ios::in);
-//    if (!file) return false;
-//    file.read(reinterpret_cast<char *>(target), sizeof(Segment));
-//    file.close();
-//    return true;
-//}
-//
-//bool segment_write(size_t x, Segment *target) {
-//    ofstream file;
-//    string file_no = "data/" + to_string(x);
-//    file.open(file_no, ios::binary | ios::out);
-//    if (!file) return 0;
-//    file.write(reinterpret_cast<const char *>(target), sizeof(Segment));
-//    file.close();
-//    return 1;
-//}
 
 void local_depth_read(int index, char *target) {
-    segFile.seekg(index * sizeof(Segment) + kSegmentSize, ios::beg);
-    segFile.read(target, sizeof(size_t));
+    StoreMng::GetInstance()->Read(index * sizeof(Segment) + kSegmentSize, sizeof(size_t), target);
+
+    // segFile.seekg(index * sizeof(Segment) + kSegmentSize, ios::beg);
+    // segFile.read(target, sizeof(size_t));
 }
 
 void local_depth_write(int index, const char *target) {
-    segFile.seekp(index * sizeof(Segment) + kSegmentSize, ios::beg);
-    segFile.write(target, sizeof(size_t));
+    StoreMng::GetInstance()->Write(index * sizeof(Segment) + kSegmentSize, sizeof(size_t), target);
+    // segFile.seekp(index * sizeof(Segment) + kSegmentSize, ios::beg);
+    // segFile.write(target, sizeof(size_t));
 }
 
 void bucket_write(int index, int loc, const char *target) {
-    segFile.seekp(index * sizeof(Segment) + loc * sizeof(Pair), ios::beg);
-    segFile.write(target, sizeof(Pair));
+    StoreMng::GetInstance()->Write(index * sizeof(Segment) + loc * sizeof(Pair), sizeof(Pair), target);
+    // segFile.seekp(index * sizeof(Segment) + loc * sizeof(Pair), ios::beg);
+    // segFile.write(target, sizeof(Pair));
 }
 
 void segment_read(int index, Segment *target) {
-    segFile.seekg(index * sizeof(Segment), ios::beg);
-    segFile.read(reinterpret_cast<char *>(target), sizeof(Segment));
+    StoreMng::GetInstance()->Read(index * sizeof(Segment), sizeof(Segment), (char*)target);
+    // segFile.seekg(index * sizeof(Segment), ios::beg);
+    // segFile.read(reinterpret_cast<char *>(target), sizeof(Segment));
 }
 
 void segment_write(int index, Segment *target) {
-    segFile.seekp(index * sizeof(Segment), ios::beg);
-    segFile.write(reinterpret_cast<const char *>(target), sizeof(Segment));
+    StoreMng::GetInstance()->Write(index * sizeof(Segment), sizeof(Segment), (char*)target);
+    // segFile.seekp(index * sizeof(Segment), ios::beg);
+    // segFile.write(reinterpret_cast<const char *>(target), sizeof(Segment));
 }
 
 
