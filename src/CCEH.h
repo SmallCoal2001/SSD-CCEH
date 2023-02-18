@@ -5,11 +5,16 @@
 #include <vector>
 #include <cmath>
 #include <vector>
+#include <unordered_map>
 #include <cstdlib>
 #include <pthread.h>
 #include <iostream>
 #include <fstream>
 #include "util.h"
+#include "singleton.h"
+
+const int MAX_FILES = 1000;
+const int SEG_PER_FILE = 256;
 
 typedef size_t Key_t;
 typedef const char *Value_t;
@@ -28,8 +33,6 @@ class CCEH;
 
 struct Directory;
 struct Segment;
-
-extern std::fstream segFile;
 
 constexpr size_t kSegmentBits = 8;
 constexpr size_t kMask = (1 << kSegmentBits) - 1;
@@ -69,38 +72,6 @@ struct Segment {
         local_depth = depth;
     }
 
-//    bool suspend(void) {
-//        int64_t val;
-//        do {
-//            val = sema;
-//            if (val < 0)
-//                return false;
-//        } while (!CAS(&sema, &val, -1));
-//
-//        int64_t wait = 0 - val - 1;
-//        while (val && sema != wait) {
-//            asm("nop");
-//        }
-//        return true;
-//    }
-//
-//    bool lock(void) {
-//        int64_t val = sema;
-//        while (val > -1) {
-//            if (CAS(&sema, &val, val + 1))
-//                return true;
-//            val = sema;
-//        }
-//        return false;
-//    }
-//
-//    void unlock(void) {
-//        int64_t val = sema;
-//        while (!CAS(&sema, &val, val - 1)) {
-//            val = sema;
-//        }
-//    }
-
     int Insert(Key_t &, Value_t, size_t, size_t);
 
     bool Insert4split(Key_t &, Value_t, size_t);
@@ -120,6 +91,37 @@ struct Segment {
     size_t local_depth;
 
 };
+
+const int MAX_FILE_SIZE = SEG_PER_FILE*sizeof(Segment);
+
+struct StoreMng: public Singleton<StoreMng>
+{
+    void Write(int off, int len, const char *buf) {
+        auto& writer = FStream(off);
+        writer.seekp(off % MAX_FILE_SIZE, std::ios::beg);
+        writer.write(buf, len);
+    }
+    void Read(int off, int len, char *buf) {
+        auto& reader = FStream(off);
+        reader.seekg(off % MAX_FILE_SIZE, std::ios::beg);
+        reader.read(buf, len);
+    }
+    private:
+    std::fstream &FStream(int off) {
+        assert(off >= 0);
+        int idx = off / MAX_FILE_SIZE;
+        if(openFiles.find(idx) == openFiles.end()) {
+            std::string filename = "data/chunk" + std::to_string(idx) + ".dat";
+            segFile[idx].open(filename, std::ios::binary | std::ios::in | std::ios::out | std::ios::trunc);
+            openFiles[idx] = true;
+        }
+        return segFile[idx];
+    }
+    std::fstream segFile[MAX_FILES];
+    std::unordered_map<int, bool> openFiles;
+};
+
+
 
 struct Directory {
     static const size_t kDefaultDepth = 10;
@@ -196,7 +198,7 @@ struct Directory {
 
     Directory(void) {}
 
-    ~Directory(void) { segFile.close(); }
+    ~Directory(void) {}
 
     void initDirectory(void) {
         depth = kDefaultDepth;
@@ -205,11 +207,6 @@ struct Directory {
         for (int i = 0; i < capacity; ++i) {
             segIndex.push_back(i);
             segLock.push_back(0);
-        }
-        segFile.open("data/segment", std::ios::binary | std::ios::in | std::ios::out | std::ios::trunc);
-        if (!segFile) {
-            std::cout << "seg文件打开失败" << std::endl;
-            exit(0);
         }
     }
 
@@ -220,11 +217,6 @@ struct Directory {
         for (int i = 0; i < capacity; ++i) {
             segIndex.push_back(i);
             segLock.push_back(0);
-        }
-        segFile.open("data/segment", std::ios::binary | std::ios::in | std::ios::out | std::ios::trunc);
-        if (!segFile) {
-            std::cout << "seg文件打开失败" << std::endl;
-            exit(0);
         }
     }
 };
