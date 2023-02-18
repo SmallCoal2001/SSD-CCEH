@@ -29,6 +29,8 @@ class CCEH;
 struct Directory;
 struct Segment;
 
+extern std::fstream segFile;
+
 constexpr size_t kSegmentBits = 8;
 constexpr size_t kMask = (1 << kSegmentBits) - 1;
 constexpr size_t kShift = kSegmentBits;
@@ -46,7 +48,7 @@ struct Segment {
     ~Segment(void) {}
 
     bool equal(Segment *a) {
-        if (kNumSlot != a->kNumSlot || local_depth != a->local_depth || sema != a->sema) return false;
+        if (local_depth != a->local_depth) return false;
         for (int i = 0; i < kNumSlot; i++) {
             if (bucket[i].key != a->bucket[i].key || bucket[i].value != a->bucket[i].value) return false;
         }
@@ -58,7 +60,6 @@ struct Segment {
             bucket[i].key = INVALID;
         }
         local_depth = 0;
-        sema = 0;
     }
 
     void initSegment(size_t depth) {
@@ -66,46 +67,45 @@ struct Segment {
             bucket[i].key = INVALID;
         }
         local_depth = depth;
-        sema = 0;
     }
 
-    bool suspend(void) {
-        int64_t val;
-        do {
-            val = sema;
-            if (val < 0)
-                return false;
-        } while (!CAS(&sema, &val, -1));
-
-        int64_t wait = 0 - val - 1;
-        while (val && sema != wait) {
-            asm("nop");
-        }
-        return true;
-    }
-
-    bool lock(void) {
-        int64_t val = sema;
-        while (val > -1) {
-            if (CAS(&sema, &val, val + 1))
-                return true;
-            val = sema;
-        }
-        return false;
-    }
-
-    void unlock(void) {
-        int64_t val = sema;
-        while (!CAS(&sema, &val, val - 1)) {
-            val = sema;
-        }
-    }
+//    bool suspend(void) {
+//        int64_t val;
+//        do {
+//            val = sema;
+//            if (val < 0)
+//                return false;
+//        } while (!CAS(&sema, &val, -1));
+//
+//        int64_t wait = 0 - val - 1;
+//        while (val && sema != wait) {
+//            asm("nop");
+//        }
+//        return true;
+//    }
+//
+//    bool lock(void) {
+//        int64_t val = sema;
+//        while (val > -1) {
+//            if (CAS(&sema, &val, val + 1))
+//                return true;
+//            val = sema;
+//        }
+//        return false;
+//    }
+//
+//    void unlock(void) {
+//        int64_t val = sema;
+//        while (!CAS(&sema, &val, val - 1)) {
+//            val = sema;
+//        }
+//    }
 
     int Insert(Key_t &, Value_t, size_t, size_t);
 
     bool Insert4split(Key_t &, Value_t, size_t);
 
-    struct Segment *Split(size_t);
+    void Split(size_t);
 
     std::vector<std::pair<size_t, size_t>> find_path(size_t, size_t);
 
@@ -116,7 +116,7 @@ struct Segment {
     size_t numElement(void);
 
     Pair bucket[kNumSlot];
-    int64_t sema = 0;
+    //int64_t sema = 0;
     size_t local_depth;
 
 };
@@ -126,8 +126,8 @@ struct Directory {
     int64_t sema = 0;
     size_t capacity;
     size_t depth;
-    size_t segment_num;
-    int segmentPointers[1048576];//暂时这样吧
+    std::vector<size_t> segIndex;
+    std::vector<int64_t> segLock;
 
     bool suspend(void) {
         int64_t val;
@@ -161,24 +161,71 @@ struct Directory {
         }
     }
 
+    //segment锁
+    bool suspend(size_t i) {
+        int64_t val;
+        do {
+            val = segLock[i];
+            if (val < 0)
+                return false;
+        } while (!CAS(&segLock[i], &val, -1));
+
+        int64_t wait = 0 - val - 1;
+        while (val && segLock[i] != wait) {
+            asm("nop");
+        }
+        return true;
+    }
+
+    bool lock(int i) {
+        int64_t val = segLock[i];
+        while (val > -1) {
+            if (CAS(&segLock[i], &val, val + 1))
+                return true;
+            val = segLock[i];
+        }
+        return false;
+    }
+
+    void unlock(int i) {
+        int64_t val = segLock[i];
+        while (!CAS(&segLock[i], &val, val - 1)) {
+            val = segLock[i];
+        }
+    }
+
     Directory(void) {}
 
-    ~Directory(void) {}
+    ~Directory(void) { segFile.close(); }
 
     void initDirectory(void) {
         depth = kDefaultDepth;
         capacity = pow(2, depth);
         sema = 0;
-        segment_num = capacity;
-        for (int i = 0; i < capacity; ++i) segmentPointers[i] = i;
+        for (int i = 0; i < capacity; ++i) {
+            segIndex.push_back(i);
+            segLock.push_back(0);
+        }
+        segFile.open("data/segment", std::ios::binary | std::ios::in | std::ios::out | std::ios::trunc);
+        if (!segFile) {
+            std::cout << "seg文件打开失败" << std::endl;
+            exit(0);
+        }
     }
 
     void initDirectory(size_t _depth) {
         depth = _depth;
         capacity = pow(2, _depth);
         sema = 0;
-        segment_num = capacity;
-        for (int i = 0; i < capacity; ++i) segmentPointers[i] = i;
+        for (int i = 0; i < capacity; ++i) {
+            segIndex.push_back(i);
+            segLock.push_back(0);
+        }
+        segFile.open("data/segment", std::ios::binary | std::ios::in | std::ios::out | std::ios::trunc);
+        if (!segFile) {
+            std::cout << "seg文件打开失败" << std::endl;
+            exit(0);
+        }
     }
 };
 
