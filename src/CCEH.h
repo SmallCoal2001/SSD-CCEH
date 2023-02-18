@@ -12,6 +12,8 @@
 #include <fstream>
 #include "util.h"
 #include "singleton.h"
+#include "lock.h"
+#include <mutex>
 
 const int MAX_FILES = 1000;
 const int SEG_PER_FILE = 256;
@@ -98,27 +100,36 @@ struct StoreMng: public Singleton<StoreMng>
 {
     void Write(int off, int len, const char *buf) {
         auto& writer = FStream(off);
+        file_lock[off/MAX_FILE_SIZE].lock();
+        
         writer.seekp(off % MAX_FILE_SIZE, std::ios::beg);
         writer.write(buf, len);
+        file_lock[off/MAX_FILE_SIZE].unlock();
     }
     void Read(int off, int len, char *buf) {
         auto& reader = FStream(off);
+        file_lock[off/MAX_FILE_SIZE].lock();
         reader.seekg(off % MAX_FILE_SIZE, std::ios::beg);
         reader.read(buf, len);
+        file_lock[off/MAX_FILE_SIZE].unlock();
     }
     private:
     std::fstream &FStream(int off) {
         assert(off >= 0);
         int idx = off / MAX_FILE_SIZE;
+        map_lock.lock();
         if(openFiles.find(idx) == openFiles.end()) {
             std::string filename = "data/chunk" + std::to_string(idx) + ".dat";
             segFile[idx].open(filename, std::ios::binary | std::ios::in | std::ios::out | std::ios::trunc);
             openFiles[idx] = true;
         }
+        map_lock.unlock();
         return segFile[idx];
     }
     std::fstream segFile[MAX_FILES];
+    std::mutex file_lock[MAX_FILES];
     std::unordered_map<int, bool> openFiles;
+    SpinMutex map_lock;
 };
 
 

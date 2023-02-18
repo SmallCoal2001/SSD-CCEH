@@ -299,7 +299,7 @@ Value_t CCEH::Get(Key_t &key) {
 //    }
     /* key not found, release segment shared lock */
     dir->unlock(segIndex);
-    cout << key << "读取失败" << endl;
+    //cout << key << "读取失败" << endl;
     return NONE;
 }
 
