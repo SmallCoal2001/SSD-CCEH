@@ -81,9 +81,10 @@ void segment_write(int index, Segment *target) {
 
 
 bool Segment::Insert4split(Key_t &key, Value_t value, size_t loc) {
-    for (int i = 0; i < kNumPairPerCacheLine; ++i) {
+    for (int i = 0; i < kNumPairPerCacheLine * kNumCacheLine; ++i) {
         auto slot = (loc + i) % kNumSlot;
         if (bucket[slot].key == INVALID) {
+            //cout << key << "的slot：" << slot << endl;
             bucket[slot].key = key;
             bucket[slot].value = value;
             return true;
@@ -95,11 +96,12 @@ bool Segment::Insert4split(Key_t &key, Value_t value, size_t loc) {
 void Segment::Split(size_t index) {
     struct Segment *split = new struct Segment;
     split->initSegment(local_depth + 1);
-
+    //cout << "newsegIndex:" << index << endl;
     auto pattern = ((size_t) 1 << (sizeof(Key_t) * 8 - local_depth - 1));
     for (int i = 0; i < kNumSlot; ++i) {
         auto f_hash = hash_funcs[0](&bucket[i].key, sizeof(Key_t), f_seed);
         if (f_hash & pattern) {
+//            cout << bucket[i].key << "进入了Insert4split" << endl;
             split->Insert4split(bucket[i].key, bucket[i].value, (f_hash & kMask) * kNumPairPerCacheLine);
 //            if (!split->Insert4split(bucket[i].key, bucket[i].value, (f_hash & kMask) * kNumPairPerCacheLine)) {
 //                auto s_hash = hash_funcs[2](&bucket[i].key, sizeof(Key_t), s_seed);
@@ -165,10 +167,12 @@ void CCEH::Insert(Key_t &key, Value_t value) {
     delete target_check;
 
     auto pattern = (f_hash >> (8 * sizeof(f_hash) - target->local_depth));
-//    if (key == 378 || key == 539) {
-//        cout << key << "的local_depth:" << target->local_depth << endl;
-//        cout << key << "的f_hash：" << hex << f_hash << endl;
-//        cout << key << "的pattern:" << hex << pattern << endl;
+//    if (key == 486486 || key == 507997 || key == 526752 || key == 523346) {
+//        cout << dec << key << "的local_depth:" << target->local_depth << endl;
+//        cout << dec << key << "的f_hash：" << hex << f_hash << endl;
+//        cout << dec << key << "的pattern:" << hex << pattern << endl;
+//        cout << dec << key << "的segIndex:" << segIndex << endl;
+//        cout << dec << key << "的x:" << x << endl;
 //    }
     for (unsigned i = 0; i < kNumPairPerCacheLine * kNumCacheLine; ++i) {
         auto loc = (f_idx + i) % Segment::kNumSlot;
@@ -228,6 +232,7 @@ void CCEH::Insert(Key_t &key, Value_t value) {
     }
 
     auto newSegIndex = dir->segLock.size();
+    //cout << key << "进入了split" << endl;
     target->Split(newSegIndex);
 
     DIR_RETRY:
@@ -252,6 +257,7 @@ void CCEH::Insert(Key_t &key, Value_t value) {
                 dir->segIndex[2 * i + 1] = old_segIndex[i];
             }
         }
+        dir->sema=0;
         target->local_depth++;
         local_depth_write(segIndex, reinterpret_cast<const char *>(&target->local_depth));
         dir->segLock[segIndex] = 0;
@@ -259,12 +265,14 @@ void CCEH::Insert(Key_t &key, Value_t value) {
         while (!dir->lock()) {
             asm("nop");
         }
-        auto y = (f_hash >> (8 * sizeof(f_hash) - dir->depth));
+        x = (f_hash >> (8 * sizeof(f_hash) - dir->depth));
+        segIndex = dir->segIndex[x];
+        dir->segLock.push_back(0);//之前忘了加
         if (dir->depth == target->local_depth + 1) {
-            if (y % 2 == 0) {
-                dir->segIndex[y + 1] = newSegIndex;
+            if (x % 2 == 0) {
+                dir->segIndex[x + 1] = newSegIndex;
             } else {
-                dir->segIndex[y] = newSegIndex;
+                dir->segIndex[x] = newSegIndex;
             }
             dir->unlock();
             target->local_depth++;
@@ -296,10 +304,15 @@ Value_t CCEH::Get(Key_t &key) {
     auto target = new struct Segment;
     RETRY:
     while (dir->sema < 0) {
+        cout << "nop" << endl;
         asm("nop");
     }
     auto x = (f_hash >> (8 * sizeof(f_hash) - dir->depth));
     auto segIndex = dir->segIndex[x];
+//    if (key == 523346) {
+//        cout << dec << key << "的segIndex:" << segIndex << endl;
+//        cout << dec << key << "的x:" << x << endl;
+//    }
     segment_read(segIndex, target);
 
     if (!dir->lock(segIndex)) {
@@ -343,7 +356,7 @@ Value_t CCEH::Get(Key_t &key) {
 //    }
     /* key not found, release segment shared lock */
     dir->unlock(segIndex);
-    cout << key << "读取失败" << endl;
+    //cout << key << "读取失败" << endl;
     return NONE;
 }
 
