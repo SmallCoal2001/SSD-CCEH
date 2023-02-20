@@ -15,29 +15,34 @@
 using namespace std;
 
 
-void local_depth_read(int index, char *target) {
+void local_depth_read(int64_t index, char *target) {
+    if(index<0) LOG_INFO("a%d", index);
     StoreMng::GetInstance()->Read(index * sizeof(Segment) + kSegmentSize, sizeof(size_t), target);
 }
 
-void local_depth_write(int index, const char *target) {
+void local_depth_write(int64_t index, const char *target) {
+    if(index<0) LOG_INFO("b%d", index);
     StoreMng::GetInstance()->Write(index * sizeof(Segment) + kSegmentSize, sizeof(size_t), target);
 }
 
-void bucket_write(int index, int loc, const char *target) {
+void bucket_write(int64_t index, int loc, const char *target) {
+    if(index<0) LOG_INFO("c%d", index);
     StoreMng::GetInstance()->Write(index * sizeof(Segment) + loc * sizeof(Pair), sizeof(Pair), target);
 }
 
-void segment_read(int index, Segment *target) {
+void segment_read(int64_t index, Segment *target) {
+    if(index<0) LOG_INFO("d%d", index);
     StoreMng::GetInstance()->Read(index * sizeof(Segment), sizeof(Segment), (char*)target);
 }
 
-void segment_write(int index, Segment *target) {
+void segment_write(int64_t index, Segment *target) {
+    if(index<0) LOG_INFO("e%d", index);
     StoreMng::GetInstance()->Write(index * sizeof(Segment), sizeof(Segment), (char*)target);
 }
 
 
 bool Segment::Insert4split(Key_t &key, Value_t value, size_t loc) {
-    for (int i = 0; i < kNumPairPerCacheLine; ++i) {
+    for (int i = 0; i < kNumPairPerCacheLine*kNumCacheLine; ++i) {
         auto slot = (loc + i) % kNumSlot;
         if (bucket[slot].key == INVALID) {
             bucket[slot].key = key;
@@ -56,13 +61,13 @@ void Segment::Split(size_t index) {
     for (int i = 0; i < kNumSlot; ++i) {
         auto f_hash = hash_funcs[0](&bucket[i].key, sizeof(Key_t), f_seed);
         if (f_hash & pattern) {
-            split->Insert4split(bucket[i].key, bucket[i].value, (f_hash & kMask) * kNumPairPerCacheLine);
-//            if (!split->Insert4split(bucket[i].key, bucket[i].value, (f_hash & kMask) * kNumPairPerCacheLine)) {
-//                auto s_hash = hash_funcs[2](&bucket[i].key, sizeof(Key_t), s_seed);
-//                if (!split->Insert4split(bucket[i].key, bucket[i].value, (s_hash & kMask) * kNumPairPerCacheLine)) {
-//
-//                }
-//            }
+            //split->Insert4split(bucket[i].key, bucket[i].value, (f_hash & kMask) * kNumPairPerCacheLine);
+           if (!split->Insert4split(bucket[i].key, bucket[i].value, (f_hash & kMask) * kNumPairPerCacheLine)) {
+               auto s_hash = hash_funcs[2](&bucket[i].key, sizeof(Key_t), s_seed);
+               if (!split->Insert4split(bucket[i].key, bucket[i].value, (s_hash & kMask) * kNumPairPerCacheLine)) {
+
+               }
+           }
         }
     }
     segment_write(index, split);
@@ -108,17 +113,17 @@ void CCEH::Insert(Key_t &key, Value_t value) {
         goto RETRY;
     }
 
-    auto x_check = (f_hash >> (8 * sizeof(f_hash) - dir->depth));
-    int segIndex_check = dir->segIndex[x_check];
-    auto target_check = new struct Segment;
-    segment_read(segIndex_check, target_check);
-    if (!target->equal(target_check)) {
+    auto target_check = (f_hash >> (8 * sizeof(f_hash) - dir->depth));
+    int segIndex_check = dir->segIndex[target_check];
+    auto target_check_seg = new struct Segment;
+    segment_read(segIndex_check, target_check_seg);
+    if (!target->equal(target_check_seg)) {
         dir->unlock(segIndex);
-        delete target_check;
+        delete target_check_seg;
         std::this_thread::yield();
         goto RETRY;
     }
-    delete target_check;
+    delete target_check_seg;
 
     auto pattern = (f_hash >> (8 * sizeof(f_hash) - target->local_depth));
 //    if (key == 378 || key == 539) {
@@ -144,27 +149,27 @@ void CCEH::Insert(Key_t &key, Value_t value) {
         }
     }
 
-//    auto s_hash = hash_funcs[2](&key, sizeof(Key_t), s_seed);
-//    auto s_idx = (s_hash & kMask) * kNumPairPerCacheLine;
-//
-//    for (unsigned i = 0; i < kNumPairPerCacheLine * kNumCacheLine; ++i) {
-//        auto loc = (s_idx + i) % Segment::kNumSlot;
-//        auto _key = target->bucket[loc].key;
-//        if ((((hash_funcs[0](&target->bucket[loc].key, sizeof(Key_t), f_seed)
-//                >> (8 * sizeof(s_hash) - target->local_depth)) != pattern) ||
-//             (target->bucket[loc].key == INVALID)) && (target->bucket[loc].key != SENTINEL)) {
-//            if (CAS(&target->bucket[loc].key, &_key, SENTINEL)) {
-//                target->bucket[loc].value = value;
-//                target->bucket[loc].key = key;
-//                segment_write(dir->segmentPointers[x], target);
-//                target->unlock();
-//                segment_write(dir->segmentPointers[x], target);
-//                delete target;
-//                //cout << key << "插入成功2" << endl;
-//                return;
-//            }
-//        }
-//    }
+   auto s_hash = hash_funcs[2](&key, sizeof(Key_t), s_seed);
+   auto s_idx = (s_hash & kMask) * kNumPairPerCacheLine;
+
+   for (unsigned i = 0; i < kNumPairPerCacheLine * kNumCacheLine; ++i) {
+       auto loc = (s_idx + i) % Segment::kNumSlot;
+       auto _key = target->bucket[loc].key;
+       if ((((hash_funcs[0](&target->bucket[loc].key, sizeof(Key_t), f_seed)
+               >> (8 * sizeof(s_hash) - target->local_depth)) != pattern) ||
+            (target->bucket[loc].key == INVALID)) && (target->bucket[loc].key != SENTINEL)) {
+           if (CAS(&target->bucket[loc].key, &_key, SENTINEL)) {
+               target->bucket[loc].value = value;
+               mfence();
+               target->bucket[loc].key = key;
+               bucket_write(segIndex, loc, reinterpret_cast<const char *>(&target->bucket[loc]));
+               dir->unlock(segIndex);
+               delete target;
+               //cout << key << "插入成功2" << endl;
+               return;
+           }
+       }
+   }
 
     auto target_local_depth = target->local_depth;
     // COLLISION !!
@@ -184,6 +189,7 @@ void CCEH::Insert(Key_t &key, Value_t value) {
     }
 
     auto newSegIndex = dir->segLock.size();
+    LOG_INFO("%ld", newSegIndex);
     target->Split(newSegIndex);
 
     DIR_RETRY:
@@ -208,6 +214,7 @@ void CCEH::Insert(Key_t &key, Value_t value) {
                 dir->segIndex[2 * i + 1] = old_segIndex[i];
             }
         }
+        dir->sema=0;
         target->local_depth++;
         local_depth_write(segIndex, reinterpret_cast<const char *>(&target->local_depth));
         dir->segLock[segIndex] = 0;
@@ -215,12 +222,14 @@ void CCEH::Insert(Key_t &key, Value_t value) {
         while (!dir->lock()) {
             asm("nop");
         }
-        auto y = (f_hash >> (8 * sizeof(f_hash) - dir->depth));
+        x = (f_hash >> (8 * sizeof(f_hash) - dir->depth));
+        segIndex = dir->segIndex[x];
+        dir->segLock.push_back(0);
         if (dir->depth == target->local_depth + 1) {
-            if (y % 2 == 0) {
-                dir->segIndex[y + 1] = newSegIndex;
+            if (x % 2 == 0) {
+                dir->segIndex[x + 1] = newSegIndex;
             } else {
-                dir->segIndex[y] = newSegIndex;
+                dir->segIndex[x] = newSegIndex;
             }
             dir->unlock();
             target->local_depth++;

@@ -65,6 +65,8 @@
     "executor": "cpp",
     "io_context": "cpp",
     "netfwd": "cpp",
-    "timer": "cpp"
+    "timer": "cpp",
+    "map": "cpp",
+    "shared_mutex": "cpp"
   }
 }

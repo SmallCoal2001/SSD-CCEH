@@ -11,6 +11,7 @@
 #include <iostream>
 #include <fstream>
 #include "util.h"
+#include "logging.h"
 #include "singleton.h"
 #include "lock.h"
 #include <mutex>
@@ -98,7 +99,7 @@ const int MAX_FILE_SIZE = SEG_PER_FILE*sizeof(Segment);
 
 struct StoreMng: public Singleton<StoreMng>
 {
-    void Write(int off, int len, const char *buf) {
+    void Write(int64_t off, int len, const char *buf) {
         auto& writer = FStream(off);
         file_lock[off/MAX_FILE_SIZE].lock();
         
@@ -106,7 +107,7 @@ struct StoreMng: public Singleton<StoreMng>
         writer.write(buf, len);
         file_lock[off/MAX_FILE_SIZE].unlock();
     }
-    void Read(int off, int len, char *buf) {
+    void Read(int64_t off, int len, char *buf) {
         auto& reader = FStream(off);
         file_lock[off/MAX_FILE_SIZE].lock();
         reader.seekg(off % MAX_FILE_SIZE, std::ios::beg);
@@ -114,8 +115,8 @@ struct StoreMng: public Singleton<StoreMng>
         file_lock[off/MAX_FILE_SIZE].unlock();
     }
     private:
-    std::fstream &FStream(int off) {
-        assert(off >= 0);
+    std::fstream &FStream(int64_t off) {
+        LOG_ASSERT(off >= 0, "%ld", off);
         int idx = off / MAX_FILE_SIZE;
         map_lock.lock();
         if(openFiles.find(idx) == openFiles.end()) {

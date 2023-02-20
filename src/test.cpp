@@ -17,7 +17,7 @@
 #include "cmdline.h"
 
 int Numthread;
-const int TestNum = 100000;
+const int TestNum = 1000000;
 
 using namespace std;
 
