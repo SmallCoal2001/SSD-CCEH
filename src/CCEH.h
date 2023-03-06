@@ -95,31 +95,31 @@ struct Segment {
 
 };
 
-const int MAX_FILE_SIZE = SEG_PER_FILE*sizeof(Segment);
+const int MAX_FILE_SIZE = SEG_PER_FILE * sizeof(Segment);
 
-struct StoreMng: public Singleton<StoreMng>
-{
+struct StoreMng : public Singleton<StoreMng> {
     void Write(int64_t off, int len, const char *buf) {
-        auto& writer = FStream(off);
-        file_lock[off/MAX_FILE_SIZE].lock();
-        
+        auto &writer = FStream(off);
+        file_lock[off / MAX_FILE_SIZE].lock();
         writer.seekp(off % MAX_FILE_SIZE, std::ios::beg);
         writer.write(buf, len);
-        file_lock[off/MAX_FILE_SIZE].unlock();
+        file_lock[off / MAX_FILE_SIZE].unlock();
     }
+
     void Read(int64_t off, int len, char *buf) {
-        auto& reader = FStream(off);
-        file_lock[off/MAX_FILE_SIZE].lock();
+        auto &reader = FStream(off);
+        file_lock[off / MAX_FILE_SIZE].lock();
         reader.seekg(off % MAX_FILE_SIZE, std::ios::beg);
         reader.read(buf, len);
-        file_lock[off/MAX_FILE_SIZE].unlock();
+        file_lock[off / MAX_FILE_SIZE].unlock();
     }
-    private:
+
+private:
     std::fstream &FStream(int64_t off) {
         LOG_ASSERT(off >= 0, "%ld", off);
         int idx = off / MAX_FILE_SIZE;
         map_lock.lock();
-        if(openFiles.find(idx) == openFiles.end()) {
+        if (openFiles.find(idx) == openFiles.end()) {
             std::string filename = "data/chunk" + std::to_string(idx) + ".dat";
             segFile[idx].open(filename, std::ios::binary | std::ios::in | std::ios::out | std::ios::trunc);
             openFiles[idx] = true;
@@ -127,12 +127,12 @@ struct StoreMng: public Singleton<StoreMng>
         map_lock.unlock();
         return segFile[idx];
     }
+
     std::fstream segFile[MAX_FILES];
     std::mutex file_lock[MAX_FILES];
     std::unordered_map<int, bool> openFiles;
     SpinMutex map_lock;
 };
-
 
 
 struct Directory {
@@ -213,6 +213,7 @@ struct Directory {
     ~Directory(void) {}
 
     void initDirectory(void) {
+        segLock.reserve(SEG_PER_FILE * MAX_FILES);//没加的时候会在push_back时，重新分配空间，多线程会危险（其实还是不是很懂
         depth = kDefaultDepth;
         capacity = pow(2, depth);
         sema = 0;
@@ -223,6 +224,7 @@ struct Directory {
     }
 
     void initDirectory(size_t _depth) {
+        segLock.reserve(SEG_PER_FILE * MAX_FILES);
         depth = _depth;
         capacity = pow(2, _depth);
         sema = 0;
